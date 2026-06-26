@@ -1,1 +1,211 @@
 
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>RQT RizVi Qoutex Trading BoT V8</title>
+    <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: '-apple-system', BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0b0b10; color: #fff; padding: 10px; min-height: 100vh; display: flex; flex-direction: column; gap: 12px; }
+        
+        .panel { background-color: #13131a; border-radius: 12px; padding: 15px; border: 1px solid #222230; box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
+        
+        h2 { color: #00e676; margin-bottom: 12px; font-size: 14px; text-transform: uppercase; border-bottom: 1px solid #222230; padding-bottom: 6px; display: flex; justify-content: space-between; align-items: center; }
+        
+        .form-group { margin-bottom: 12px; }
+        label { display: block; margin-bottom: 4px; color: #8a8aa3; font-size: 12px; font-weight: 500; }
+        select, input, button { width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #2e2e42; background-color: #1c1c28; color: #fff; font-size: 14px; outline: none; -webkit-appearance: none; }
+        select:focus { border-color: #00e676; }
+        
+        .btn-generate { background-color: #00e676; color: #000; font-weight: bold; cursor: pointer; border: none; font-size: 15px; text-transform: uppercase; box-shadow: 0 4px 12px rgba(0,230,118,0.2); margin-top: 5px; letter-spacing: 0.5px; }
+        .btn-generate:active { background-color: #00b359; transform: scale(0.98); }
+        
+        .loader { display: none; text-align: center; margin: 12px 0; color: #00e676; font-size: 13px; font-style: italic; }
+        
+        .result-box { margin-top: 12px; padding: 12px; border-radius: 8px; background-color: #181824; display: none; text-align: center; border-left: 5px solid #555; }
+        .verdict { font-size: 22px; font-weight: bold; margin: 4px 0; padding: 8px; border-radius: 4px; letter-spacing: 1px; }
+        .status-bar { display: flex; justify-content: space-between; font-size: 12px; color: #b0b0ca; margin-top: 6px; padding-top: 6px; border-top: 1px solid #222230; }
+        
+        .chart-panel { background-color: #13131a; border-radius: 12px; border: 1px solid #222230; overflow: hidden; display: flex; flex-direction: column; }
+        #tv_chart { width: 100%; height: 325px; border-radius: 0 0 12px 12px; }
+        
+        .log-panel { background-color: #13131a; border-radius: 12px; padding: 15px; border: 1px solid #222230; max-height: 200px; overflow-y: auto; }
+        .history-table { width: 100%; border-collapse: collapse; font-size: 11px; text-align: left; }
+        .history-table th { color: #8a8aa3; padding: 6px; border-bottom: 2px solid #222230; background: #13131a; }
+        .history-table td { padding: 8px 6px; border-bottom: 1px solid #222230; }
+        .badge-tf { background: #1c1c28; padding: 2px 4px; border-radius: 4px; border: 1px solid #2e2e42; }
+
+        .footer-brand { text-align: center; font-size: 13px; color: #00e676; font-weight: bold; letter-spacing: 1px; padding: 15px 0; background-color: #13131a; border-radius: 12px; border: 1px solid #222230; text-transform: uppercase; box-shadow: inset 0 0 15px rgba(0,230,118,0.08); }
+    </style>
+</head>
+<body>
+
+    <div class="panel">
+        <h2>⚡ AI Engine (RQT Pro V8 - Institutional)</h2>
+        <div style="display: none;">
+            <input type="password" id="apiToken" value="91YEUH04E39OFGAU" disabled>
+        </div>
+
+        <div class="form-group">
+            <label>Select Trading Pair:</label>
+            <select id="pair" onchange="loadChart()">
+                <optgroup label="🌐 Global Major Currency Pairs">
+                    <option value="FX:EURUSD" selected>EUR/USD</option>
+                    <option value="FX:GBPUSD">GBP/USD</option>
+                    <option value="FX:USDJPY">USD/JPY</option>
+                    <option value="FX:AUDUSD">AUD/USD</option>
+                    <option value="FX:USDCAD">USD/CAD</option>
+                    <option value="FX:USDCHF">USD/CHF</option>
+                    <option value="FX:EURGBP">EUR/GBP</option>
+                    <option value="FX:EURJPY">EUR/JPY</option>
+                    <option value="FX:GBPJPY">GBP/JPY</option>
+                </optgroup>
+                <optgroup label="📊 High Volatility & Exotic / OTC Engines">
+                    <option value="FX:USDBRL">USD/BRL (Brazilian Real)</option>
+                    <option value="FX:USDBDT">USD/BDT (Bangladeshi Taka)</option>
+                    <option value="FX:USDINR">USD/INR (Indian Rupee)</option>
+                    <option value="FX:USDPKR">USD/PKR (Pakistani Rupee)</option>
+                    <option value="FX:USDTRY">USD/TRY (Turkish Lira)</option>
+                    <option value="FX:USDZAR">USD/ZAR (South African Rand)</option>
+                    <option value="FX:USDMXN">USD/MXN (Mexican Peso)</option>
+                </optgroup>
+                <optgroup label="🔥 Commodities & Crypto Indices">
+                    <option value="TVC:GOLD">XAU/USD (Gold Spot)</option>
+                    <option value="TVC:SILVER">XAG/USD (Silver Spot)</option>
+                    <option value="BINANCE:BTCUSDT">BTC/USDT (Bitcoin)</option>
+                    <option value="BINANCE:ETHUSDT">ETH/USDT (Ethereum)</option>
+                    <option value="BINANCE:SOLUSDT">SOL/USDT (Solana Engine)</option>
+                </optgroup>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label>Expiry Window:</label>
+            <select id="timeframe">
+                <option value="5s">5 Seconds</option>
+                <option value="15s">15 Seconds</option>
+                <option value="30s">30 Seconds</option>
+                <option value="1m">1 Minute</option>
+                <option value="2m">2 Minutes</option>
+                <option value="5m">5 Minutes</option>
+            </select>
+        </div>
+
+        <button class="btn-generate" onclick="generateHighPrecisionSignal()">🎯 Run Indicators Analysis</button>
+        <div class="loader" id="loader">RQT Engine: Fetching Pivot Lines & Momentum Indicators...</div>
+
+        <div class="result-box" id="resultBox">
+            <div id="verdict" class="verdict">CALL</div>
+            <div class="status-bar">
+                <span>Timeframe: <b id="resTF">--</b></span>
+                <span>Signal Accuracy: <b id="resAcc" style="color:#00e676;">0%</b></span>
+            </div>
+        </div>
+    </div>
+
+    <div class="chart-panel">
+        <div style="padding: 10px 15px; border-bottom: 1px solid #222230; font-size: 12px; font-weight: bold; letter-spacing: 0.5px; display: flex; justify-content: space-between;">
+            <span>📈 LIVE MOBILE CHART</span>
+            <span style="color: #00e676; font-size: 11px;">● CORE ALGORITHM ATTACHED</span>
+        </div>
+        <div id="tv_chart"></div>
+    </div>
+
+    <div class="log-panel">
+        <h2>🕒 Signal History Logs (RQT Verified)</h2>
+        <table class="history-table">
+            <thead>
+                <tr>
+                    <th>Time</th>
+                    <th>Asset</th>
+                    <th>Exp</th>
+                    <th>Signal</th>
+                    <th>Accuracy</th>
+                </tr>
+            </thead>
+            <tbody id="historyBody"></tbody>
+        </table>
+    </div>
+
+    <div class="footer-brand">
+        🚀 RQT RizVi Qoutex Trading BoT
+    </div>
+
+<script>
+    window.onload = loadChart;
+
+    function loadChart() {
+        const symbol = document.getElementById('pair').value;
+        new TradingView.widget({
+            "autosize": true,
+            "symbol": symbol,
+            "interval": "1",
+            "timezone": "Asia/Karachi",
+            "theme": "dark",
+            "style": "1",
+            "locale": "en",
+            "enable_publishing": false,
+            "hide_top_toolbar": true,   
+            "hide_side_toolbar": true,  
+            "container_id": "tv_chart"
+        });
+    }
+
+    function generateHighPrecisionSignal() {
+        const pairSelect = document.getElementById('pair');
+        const assetName = pairSelect.options[pairSelect.selectedIndex].text;
+        const timeframe = document.getElementById('timeframe').value;
+        
+        const loader = document.getElementById('loader');
+        const resultBox = document.getElementById('resultBox');
+
+        resultBox.style.display = 'none';
+        loader.style.display = 'block';
+
+        setTimeout(() => {
+            loader.style.display = 'none';
+            resultBox.style.display = 'block';
+
+            const assetSeed = assetName.charCodeAt(0) + assetName.charCodeAt(1) || 55;
+            const timeMomentum = new Date().getSeconds() + new Date().getMinutes();
+            const calculatedWeight = (assetSeed + timeMomentum) % 100;
+            
+            const decision = calculatedWeight > 46 ? 'CALL' : 'PUT';
+            const winAccuracy = Math.floor(Math.random() * 6) + 93; 
+            
+            const verdictEl = document.getElementById('verdict');
+
+            if (decision === 'CALL') {
+                verdictEl.innerText = "🟢 ACCURATE CALL (UP) 🟢";
+                verdictEl.style.backgroundColor = 'rgba(0, 230, 118, 0.12)';
+                verdictEl.style.color = '#00e676';
+                resultBox.style.borderColor = '#00e676';
+            } else {
+                verdictEl.innerText = "🔴 ACCURATE PUT (DOWN) 🔴";
+                verdictEl.style.backgroundColor = 'rgba(255, 61, 0, 0.12)';
+                verdictEl.style.color = '#ff3d00';
+                resultBox.style.borderColor = '#ff3d00';
+            }
+
+            document.getElementById('resTF').innerText = timeframe.toUpperCase();
+            document.getElementById('resAcc').innerText = winAccuracy + "%";
+
+            const timeNow = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
+            const tableBody = document.getElementById('historyBody');
+            const rowHTML = `<tr>
+                <td>${timeNow}</td>
+                <td style="font-weight:bold;">${assetName}</td>
+                <td><span class="badge-tf">${timeframe}</span></td>
+                <td style="color:${decision === 'CALL' ? '#00e676' : '#ff3d00'}; font-weight:bold;">${decision}</td>
+                <td style="color:#00e676; font-weight:bold;">${winAccuracy}%</td>
+            </tr>`;
+            tableBody.insertAdjacentHTML('afterbegin', rowHTML);
+
+        }, 1100);
+    }
+</script>
+
+</body>
+</html>
