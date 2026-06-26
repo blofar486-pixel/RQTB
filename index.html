@@ -38,11 +38,14 @@
         .chart-panel { background-color: #13131a; border-radius: 12px; border: 1px solid #222230; overflow: hidden; display: flex; flex-direction: column; }
         #tv_chart { width: 100%; height: 310px; border-radius: 0 0 12px 12px; }
         
-        .log-panel { background-color: #13131a; border-radius: 12px; padding: 15px; border: 1px solid #222230; max-height: 180px; overflow-y: auto; }
+        .log-panel { background-color: #13131a; border-radius: 12px; padding: 15px; border: 1px solid #222230; max-height: 220px; overflow-y: auto; }
         .history-table { width: 100%; border-collapse: collapse; font-size: 11px; text-align: left; }
         .history-table th { color: #8a8aa3; padding: 6px; border-bottom: 2px solid #222230; background: #13131a; }
         .history-table td { padding: 8px 6px; border-bottom: 1px solid #222230; }
         .badge-tf { background: #1c1c28; padding: 2px 4px; border-radius: 4px; border: 1px solid #2e2e42; }
+
+        .btn-clear { background: transparent; border: 1px solid #ff3d00; color: #ff3d00; padding: 2px 8px; font-size: 10px; border-radius: 4px; cursor: pointer; text-transform: uppercase; float: right; font-weight: bold; }
+        .btn-clear:hover { background: #ff3d00; color: #fff; }
 
         .footer-brand { text-align: center; font-size: 13px; color: #00e676; font-weight: bold; letter-spacing: 1px; padding: 15px 0; background-color: #13131a; border-radius: 12px; border: 1px solid #222230; text-transform: uppercase; }
     </style>
@@ -167,7 +170,10 @@
     </div>
 
     <div class="log-panel">
-        <h2>🕒 Signal History Logs (RQT Real-Time Verified)</h2>
+        <h2>
+            🕒 Signal History Logs (RQT Verified)
+            <button class="btn-clear" onclick="clearLogsData()">Clear Data</button>
+        </h2>
         <table class="history-table">
             <thead>
                 <tr>
@@ -187,10 +193,17 @@
     </div>
 
 <script>
-    let totalWins = 0;
-    let totalLosses = 0;
+    let totalWins = parseInt(localStorage.getItem('rqt_wins')) || 0;
+    let totalLosses = parseInt(localStorage.getItem('rqt_losses')) || 0;
+    let dynamicLogs = JSON.parse(localStorage.getItem('rqt_logs')) || [];
+    let processingCycle = null;
 
-    window.onload = loadChart;
+    window.onload = function() {
+        loadChart();
+        updateStatsUI();
+        renderLogsTable();
+        restoreActiveEngineCycle();
+    };
 
     function loadChart() {
         const symbol = document.getElementById('pair').value;
@@ -215,6 +228,48 @@
         return 60; 
     }
 
+    function updateStatsUI() {
+        const totalTrades = totalWins + totalLosses;
+        const winRate = totalTrades > 0 ? Math.round((totalWins / totalTrades) * 100) : 0;
+        
+        document.getElementById('totalWins').innerText = totalWins;
+        document.getElementById('totalLosses').innerText = totalLosses;
+        document.getElementById('avgAccuracy').innerText = winRate + "%";
+    }
+
+    function renderLogsTable() {
+        const tableBody = document.getElementById('historyBody');
+        tableBody.innerHTML = "";
+        
+        dynamicLogs.forEach(log => {
+            const rowHTML = `<tr>
+                <td>${log.time}</td>
+                <td style="font-weight:bold;">${log.asset}</td>
+                <td><span class="badge-tf">${log.tf}</span></td>
+                <td style="color:${log.signal === 'CALL' ? '#00e676' : '#ff3d00'}; font-weight:bold;">${log.signal}</td>
+                <td style="color:${log.color}; font-weight:bold;">${log.result}</td>
+            </tr>`;
+            tableBody.insertAdjacentHTML('beforeend', rowHTML);
+        });
+    }
+
+    function clearLogsData() {
+        if(confirm("Are you sure you want to delete all trading history and scores?")) {
+            localStorage.clear();
+            totalWins = 0;
+            totalLosses = 0;
+            dynamicLogs = [];
+            if(processingCycle) clearInterval(processingCycle);
+            localStorage.removeItem('active_trade_cycle');
+            
+            updateStatsUI();
+            renderLogsTable();
+            document.getElementById('resultBox').style.display = 'none';
+            document.getElementById('mtgAlertBox').style.display = 'none';
+            document.getElementById('genBtn').disabled = false;
+        }
+    }
+
     function generateHighPrecisionSignal() {
         const pairSelect = document.getElementById('pair');
         const assetName = pairSelect.options[pairSelect.selectedIndex].text;
@@ -223,12 +278,9 @@
         const loader = document.getElementById('loader');
         const resultBox = document.getElementById('resultBox');
         const genBtn = document.getElementById('genBtn');
-        const timerDisplay = document.getElementById('timerDisplay');
-        const resStatus = document.getElementById('resStatus');
-        const mtgAlertBox = document.getElementById('mtgAlertBox');
 
         resultBox.style.display = 'none';
-        mtgAlertBox.style.display = 'none';
+        document.getElementById('mtgAlertBox').style.display = 'none';
         loader.style.display = 'block';
         genBtn.disabled = true;
 
@@ -239,90 +291,115 @@
             const assetSeed = assetName.charCodeAt(0) + assetName.charCodeAt(1) || 55;
             const timeMomentum = new Date().getSeconds() + new Date().getMinutes();
             const calculatedWeight = (assetSeed + timeMomentum) % 100;
-            
             const decision = calculatedWeight > 45 ? 'CALL' : 'PUT';
-            const verdictEl = document.getElementById('verdict');
 
-            if (decision === 'CALL') {
-                verdictEl.innerText = "🟢 ACCURATE CALL (UP) 🟢";
-                verdictEl.style.backgroundColor = 'rgba(0, 230, 118, 0.12)';
-                verdictEl.style.color = '#00e676';
-                resultBox.style.borderColor = '#00e676';
-            } else {
-                verdictEl.innerText = "🔴 ACCURATE PUT (DOWN) 🔴";
-                verdictEl.style.backgroundColor = 'rgba(255, 61, 0, 0.12)';
-                verdictEl.style.color = '#ff3d00';
-                resultBox.style.borderColor = '#ff3d00';
-            }
+            let duration = parseTimeframeToSeconds(timeframe);
+            const absoluteExpirationTime = Date.now() + (duration * 1000);
+            const logTimestamp = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
 
-            document.getElementById('resTF').innerText = timeframe.toUpperCase();
-            resStatus.innerText = "WAITING CLOSING...";
-            resStatus.style.color = "#00b0ff";
-            
-            let totalDurationSeconds = parseTimeframeToSeconds(timeframe);
-            timerDisplay.style.display = "inline-block";
-            timerDisplay.innerText = formatTime(totalDurationSeconds);
+            const sharedState = {
+                expireAt: absoluteExpirationTime,
+                asset: assetName,
+                tf: timeframe,
+                signal: decision,
+                time: logTimestamp
+            };
+            localStorage.setItem('active_trade_cycle', JSON.stringify(sharedState));
 
-            const timeNow = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
-            const tableBody = document.getElementById('historyBody');
-            const uniqueRowId = "row_" + Date.now();
-            
-            const rowHTML = `<tr id="${uniqueRowId}">
-                <td>${timeNow}</td>
-                <td style="font-weight:bold;">${assetName}</td>
-                <td><span class="badge-tf">${timeframe}</span></td>
-                <td style="color:${decision === 'CALL' ? '#00e676' : '#ff3d00'}; font-weight:bold;">${decision}</td>
-                <td class="res-cell" style="color:#ffb300; font-weight:bold; font-style:italic;">⏳ Running (${totalDurationSeconds}s)</td>
-            </tr>`;
-            tableBody.insertAdjacentHTML('afterbegin', rowHTML);
-
-            const countdownInterval = setInterval(() => {
-                totalDurationSeconds--;
-                timerDisplay.innerText = formatTime(totalDurationSeconds);
-                
-                const targetRow = document.getElementById(uniqueRowId);
-                if(targetRow) {
-                    targetRow.querySelector('.res-cell').innerText = `⏳ Running (${totalDurationSeconds}s)`;
-                }
-
-                if (totalDurationSeconds <= 0) {
-                    clearInterval(countdownInterval);
-                    timerDisplay.style.display = "none";
-                    
-                    const tradeIsWin = Math.random() > 0.08; 
-                    const finalRow = document.getElementById(uniqueRowId);
-                    const resultCell = finalRow.querySelector('.res-cell');
-
-                    if (tradeIsWin) {
-                        totalWins++;
-                        resultCell.innerText = "🏆 WIN (ITM)";
-                        resultCell.style.color = "#00e676";
-                        resStatus.innerText = "WIN SECURED";
-                        resStatus.style.color = "#00e676";
-                    } else {
-                        totalLosses++;
-                        resultCell.innerHTML = `❌ LOSS (OTM)<br><span style="color:#ffb300; font-size:10px; font-weight:bold;">MTG 1: ${decision}</span>`;
-                        resultCell.style.color = "#ff3d00";
-                        
-                        resStatus.innerText = "LOSS RECORDED";
-                        resStatus.style.color = "#ff3d00";
-
-                        document.getElementById('mtgDirectionText').innerText = decision + " (NEXT CANDLE)";
-                        mtgAlertBox.style.display = "block";
-                    }
-
-                    const totalTrades = totalWins + totalLosses;
-                    const winRate = Math.round((totalWins / totalTrades) * 100);
-
-                    document.getElementById('totalWins').innerText = totalWins;
-                    document.getElementById('totalLosses').innerText = totalLosses;
-                    document.getElementById('avgAccuracy').innerText = winRate + "%";
-                    
-                    genBtn.disabled = false;
-                }
-            }, 1000);
+            triggerEngineCountdown(sharedState);
 
         }, 1100);
+    }
+
+    function triggerEngineCountdown(state) {
+        const genBtn = document.getElementById('genBtn');
+        const resultBox = document.getElementById('resultBox');
+        const verdictEl = document.getElementById('verdict');
+        const timerDisplay = document.getElementById('timerDisplay');
+        const resStatus = document.getElementById('resStatus');
+        const mtgAlertBox = document.getElementById('mtgAlertBox');
+
+        genBtn.disabled = true;
+        resultBox.style.display = 'block';
+        document.getElementById('resTF').innerText = state.tf.toUpperCase();
+
+        if (state.signal === 'CALL') {
+            verdictEl.innerText = "🟢 ACCURATE CALL (UP) 🟢";
+            verdictEl.style.backgroundColor = 'rgba(0, 230, 118, 0.12)';
+            verdictEl.style.color = '#00e676';
+            resultBox.style.borderColor = '#00e676';
+        } else {
+            verdictEl.innerText = "🔴 ACCURATE PUT (DOWN) 🔴";
+            verdictEl.style.backgroundColor = 'rgba(255, 61, 0, 0.12)';
+            verdictEl.style.color = '#ff3d00';
+            resultBox.style.borderColor = '#ff3d00';
+        }
+
+        if(processingCycle) clearInterval(processingCycle);
+
+        processingCycle = setInterval(() => {
+            const timeLeftMs = state.expireAt - Date.now();
+            const remainingSecs = Math.max(0, Math.ceil(timeLeftMs / 1000));
+
+            if(remainingSecs > 0) {
+                resStatus.innerText = "WAITING CLOSING...";
+                resStatus.style.color = "#00b0ff";
+                timerDisplay.style.display = "inline-block";
+                timerDisplay.innerText = formatTime(remainingSecs);
+            } else {
+                clearInterval(processingCycle);
+                timerDisplay.style.display = "none";
+                localStorage.removeItem('active_trade_cycle');
+
+                const tradeIsWin = Math.random() > 0.08; 
+                let logData = {
+                    time: state.time,
+                    asset: state.asset,
+                    tf: state.tf,
+                    signal: state.signal
+                };
+
+                if (tradeIsWin) {
+                    totalWins++;
+                    localStorage.setItem('rqt_wins', totalWins);
+                    logData.result = "🏆 WIN (ITM)";
+                    logData.color = "#00e676";
+                    
+                    resStatus.innerText = "WIN SECURED";
+                    resStatus.style.color = "#00e676";
+                } else {
+                    totalLosses++;
+                    localStorage.setItem('rqt_losses', totalLosses);
+                    logData.result = `❌ LOSS | MTG 1: ${state.signal}`;
+                    logData.color = "#ff3d00";
+                    
+                    resStatus.innerText = "LOSS RECORDED";
+                    resStatus.style.color = "#ff3d00";
+
+                    document.getElementById('mtgDirectionText').innerText = state.signal + " (NEXT CANDLE)";
+                    mtgAlertBox.style.display = "block";
+                }
+
+                dynamicLogs.unshift(logData);
+                localStorage.setItem('rqt_logs', JSON.stringify(dynamicLogs));
+                
+                updateStatsUI();
+                renderLogsTable();
+                genBtn.disabled = false;
+            }
+        }, 1000);
+    }
+
+    function restoreActiveEngineCycle() {
+        const storedCycle = localStorage.getItem('active_trade_cycle');
+        if(storedCycle) {
+            const parsedState = JSON.parse(storedCycle);
+            if(parsedState.expireAt > Date.now()) {
+                triggerEngineCountdown(parsedState);
+            } else {
+                localStorage.removeItem('active_trade_cycle');
+            }
+        }
     }
 
     function formatTime(secs) {
