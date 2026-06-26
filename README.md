@@ -1,0 +1,2 @@
+# RQTB
+Rizvi Qoutex Bot
